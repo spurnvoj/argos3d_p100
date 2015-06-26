@@ -1,0 +1,6 @@
+# Object file
+*.config
+*.creator
+*.user
+*.files
+*.includes

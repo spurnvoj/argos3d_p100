@@ -1,9 +1,0 @@
-argos/examples/BtaP100/bta_p100_example.cpp
-argos/examples/BtaP100/bta_p100_example_minimal.cpp
-argos/include/bta.h
-argos/include/bta_discovery.h
-argos/include/bta_event.h
-argos/include/bta_flash_update.h
-argos/include/bta_frame.h
-argos/include/bta_status.h
-src/argos3d_p100_node.cpp
