@@ -8,13 +8,15 @@
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/statistical_outlier_removal.h>
 
 #include <stdio.h>
 #include <time.h>
 #include <sstream>
 
 
-typedef pcl::PointCloud2<pcl::PointXYZI> PointCloud;
+typedef pcl::PointCloud<pcl::PointXYZI> PointCloud;
 
 /**
  * Global Parameter Declarations
@@ -34,7 +36,9 @@ BTA_Frame *frame;
  */
 
 bool dataPublished;
-ros::Publisher pub_non_filtered;
+
+ros::Publisher pub_without_outlier;
+//ros::Publisher pub_non_filtered;
 ros::Publisher pub_filtered;
 
 /**
@@ -95,8 +99,9 @@ int initialize(int argc, char *argv[],ros::NodeHandle nh){
     /*
      * ROS Node Initialization
      */
-    pub_non_filtered = nh.advertise<PointCloud> ("depth_non_filtered", 1);
+    //pub_non_filtered = nh.advertise<PointCloud> ("depth_non_filtered", 1);
     pub_filtered = nh.advertise<PointCloud> ("depth_filtered", 1);
+    pub_without_outlier = nh.advertise<PointCloud> ("depth_filtered_without_outlier", 1);
     dataPublished=true;
     return 1;
 }
@@ -149,38 +154,46 @@ bool publishData() {
     msg_non_filtered->height = 1;
     msg_non_filtered->width = xRes*yRes;
 
-    PointCloud::Ptr msg_filtered (new PointCloud);
-    msg_filtered->header.frame_id = "tf_argos3d";
-    msg_filtered->width    = 1;
-    msg_filtered->height   = xRes*yRes;
-    msg_filtered->is_dense = false;
-
-    int countWidth=0;
-
     for (size_t i = 0; i < xRes*yRes; ++i)	{
         pcl::PointXYZI temp_point;
         temp_point.x = xCoordinates[i];
         temp_point.y = yCoordinates[i];
         temp_point.z = zCoordinates[i];
         temp_point.intensity = amplitudes[i] ;
-
-        if(amplitudes[i]>AmplitudeThreshold) {
-            msg_filtered->points.push_back(temp_point);
-            countWidth++;
-        }
         msg_non_filtered->points.push_back(temp_point);
     }
-    msg_filtered->height   = countWidth;
     /*
-      * Publishing the messages
-      */
+     * Filtering the PointCloud
+     */
+    PointCloud::Ptr msg_filtered (new PointCloud);
+    pcl::VoxelGrid<pcl::PointXYZI> sor;
+    sor.setInputCloud (msg_non_filtered);
+    sor.setLeafSize (0.01f, 0.01f, 0.01f);
+    sor.filter (*msg_filtered);
+
+    /*
+     * Filtering outlier
+     */
+    PointCloud::Ptr msg_filtered_without_outlier (new PointCloud);
+    pcl::StatisticalOutlierRemoval<pcl::PointXYZI> sor_stat;
+    sor_stat.setInputCloud (msg_filtered);
+    sor_stat.setMeanK (50);
+    sor_stat.setStddevMulThresh (1);
+    sor_stat.filter (*msg_filtered_without_outlier);
+
+    printf("%d, %d\n",msg_filtered->points.size(),msg_filtered_without_outlier->points.size());
+    /*
+     * Publishing the messages
+     */
     //pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);
+    //msg_non_filtered->header.stamp = frame->timeStamp;
+    //pub_non_filtered.publish (msg_non_filtered);
+
     msg_filtered->header.stamp = frame->timeStamp;
     pub_filtered.publish (msg_filtered);
 
-    msg_non_filtered->header.stamp = frame->timeStamp;
-    pub_non_filtered.publish (msg_non_filtered);
-
+    msg_filtered_without_outlier->header.stamp = frame->timeStamp;
+    pub_without_outlier.publish (msg_filtered_without_outlier);
 
     status = BTAfreeFrame(&frame);
     if (status != BTA_StatusOk) {
