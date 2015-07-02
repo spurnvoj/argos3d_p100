@@ -112,6 +112,8 @@ add_definitions(${PCL_DEFINITIONS})
 
 ## Declare a cpp executable
 add_executable(argos3d_p100_node src/argos3d_p100_node.cpp)
+add_executable(pcl_visualized_demo src/pcl_visualized_demo.cpp)
+add_executable(pcl_visualized src/pcl_visualized.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
@@ -119,6 +121,8 @@ add_executable(argos3d_p100_node src/argos3d_p100_node.cpp)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries ( argos3d_p100_node ${PCL_LIBRARIES} ${catkin_LIBRARIES} bta_p100)
+target_link_libraries ( pcl_visualized_demo ${PCL_LIBRARIES} ${catkin_LIBRARIES})
+target_link_libraries ( pcl_visualized ${PCL_LIBRARIES} ${catkin_LIBRARIES})
 
 #############
 ## Install ##
