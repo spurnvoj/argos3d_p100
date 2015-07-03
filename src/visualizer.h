@@ -22,8 +22,8 @@ public:
     ArgosVisualizer();
     void refresh();
     void clearWindow();
-    void addConvexMesh(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud, const std::string &id);
-    void addConcaveMesh(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud, const std::string &id);
+    void addConvexMesh(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud, const size_t &id);
+    void addConcaveMesh(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud, const size_t &id);
     void addPointCloud(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud);
     virtual ~ArgosVisualizer() {  }
 };
