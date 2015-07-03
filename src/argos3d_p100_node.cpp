@@ -1,9 +1,6 @@
-#include "../argos/include/bta.h"
+/* \author Vojtech Spurny CTU in Prague*/
 
-#include <ros/console.h>
-#include <ros/ros.h>
-#include <tf/transform_listener.h>
-#include <ros/publisher.h>
+#include "../argos/include/bta.h"
 
 /// PCL LIBRARIES
 #include <pcl_ros/point_cloud.h>
@@ -27,6 +24,19 @@
 #include <stdio.h>
 #include <time.h>
 
+/**
+ * Adjustable parameters
+ */
+// VoxelGrid
+#define VOXEL_GRID_LEAF_SIZE 0.05                   // 5cm
+// StatisticalOutlierRemoval filter
+#define STAT_FILTER_MEAN_K 20                       // 20
+#define STAT_FILTER_DEV_MUL_THRESH 1                // 1
+// Euclidean Cluster Extraction
+#define EUCL_CLUSTER_EXTRAC_TOLERANCE 0.15          // 0.15
+#define EUCL_CLUSTER_EXTRAC_MIN_CLUSTER_SIZE 50     // 50
+
+
 
 typedef pcl::PointCloud<pcl::PointXYZ> PointCloud;
 ArgosVisualizer* visualizer;
@@ -38,46 +48,14 @@ BTA_Handle btaHandle;
 BTA_Status status;
 BTA_Frame *frame;
 
-/**
- * ROS Parameters
- */
-
 bool dataPublished;
-
-ros::Publisher pub_without_outlier;
-ros::Publisher pub_non_filtered;
-ros::Publisher pub_filtered;
-ros::Publisher pub_cluster;
-ros::Publisher pub_hull;
-
-/**
- *
- * @brief This method prints help in command line if given --help option
- * or if there is any error in the options
- *
- */
-int help() {
-    std::cout << "\n Using help for argos3d_p100\n"
-                 " You can set default configuration values for the camera with the following options: \n" << std::endl;
-    std::cout << " Usage:\n rosrun argos3d_p100 argos3d_p100_node "<< std::endl
-              << "\t-it *Integration_Time* \n\tIntegration time(in msec) for the sensor \n\t(min: 100 | max: 2700 | default: 1500) "<< std::endl
-              << "\t-mf  *Modulation_Frequency* \n\tSet the modulation frequency(Hz) of the sensor \n\t(min: 5000000 | max: 30000000 | default: 30000000) "<< std::endl
-              << "\n Example:" << std::endl
-              << "rosrun argos3d_p100 argos3d_p100_node -it 1500 \n" << std::endl;
-    exit(0);
-} //print_help
-
 
 /**
  *
  * @brief Initialize the camera and initial parameter values. Returns 1 if properly initialized.
  *
- * @param [in] int
- * @param [in] argv
- * @param [in] ros::NodeHandle
- *
  */
-int initialize(int argc, char *argv[],ros::NodeHandle nh){
+int initialize(){
     /*
      * Camera Initialization
      */
@@ -85,34 +63,26 @@ int initialize(int argc, char *argv[],ros::NodeHandle nh){
     BTA_Config config;
     status = BTAinitConfig(&config);
     if (status != BTA_StatusOk) {
-        ROS_ERROR_STREAM("Could not connect: " << status);
+        std::cout << "Could not connect: " << status << std::endl;
         return 0;
     }
-    config.frameMode = BTA_FrameModeXYZ;//BTA_FrameModeXYZAmp; //BTA_FrameModeDistAmpFlags;
-    //config.calibFileName = "xyz_calibration_00.bin";
+    config.frameMode = BTA_FrameModeXYZ;
 
     status = BTAopen(&config, &btaHandle);
     if (status != BTA_StatusOk) {
-        ROS_ERROR_STREAM("Could not open: " << status);
+        std::cout << "Could not open: " << status << std::endl;
         return 0;
     }
 
     BTA_DeviceInfo *deviceInfo;
     status = BTAgetDeviceInfo(btaHandle, &deviceInfo);
     if (status != BTA_StatusOk) {
-        ROS_ERROR_STREAM("Could not read device info: " << status);
+        std::cout << "Could not read device info: " << status << std::endl;
         return 0;
     }
     //printf("Device type: 0x%x\n", deviceInfo->deviceType);
     BTAfreeDeviceInfo(deviceInfo);
-    /*
-     * ROS Node Initialization
-     */
-    pub_non_filtered = nh.advertise<PointCloud> ("depth_non_filtered", 1);
-    pub_filtered = nh.advertise<PointCloud> ("depth_filtered", 1);
-    pub_without_outlier = nh.advertise<PointCloud> ("depth_filtered_without_outlier", 1);
-    pub_cluster = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB> > ("depth_clusters", 1);
-    pub_hull = nh.advertise<PointCloud> ("depth_hull", 1);
+
     dataPublished=true;
     visualizer = new ArgosVisualizer();
     return 1;
@@ -126,14 +96,12 @@ int initialize(int argc, char *argv[],ros::NodeHandle nh){
  */
 bool publishData() {
     visualizer->clearWindow();
-    std::ostringstream ss;
-
     /*
      * Get frame from camera
      */
     status = BTAgetFrame(btaHandle, &frame,3000);  //3000;
     if (status != BTA_StatusOk) {
-        ROS_ERROR_STREAM("Could transfer data: " << status);
+        std::cout << "Could transfer data: " << status << std::endl;
         return 0;
     }
 
@@ -146,67 +114,67 @@ bool publishData() {
     uint16_t xRes, yRes;
     status = BTAgetXYZcoordinates(frame, (void **)&xCoordinates, (void **)&yCoordinates, (void **)&zCoordinates, &dataFormat, &unit, &xRes, &yRes);
     if (status != BTA_StatusOk) {
-        ROS_ERROR_STREAM("Could get cartesian coordinates: " << status);
+        std::cout << "Could get cartesian coordinates: " << status << std::endl;
         return 0;
     }
 
     /*
      * Creating the pointcloud
      */
-    PointCloud::Ptr msg_non_filtered (new PointCloud);
-    msg_non_filtered->header.frame_id = "map";
-    msg_non_filtered->height = 1;
-    msg_non_filtered->width = xRes*yRes;
+    PointCloud::Ptr cloud_raw (new PointCloud);
+    cloud_raw->header.frame_id = "map";
+    cloud_raw->height = 1;
+    cloud_raw->width = xRes*yRes;
 
     for (size_t i = 0; i < xRes*yRes; ++i)	{
         pcl::PointXYZ temp_point;
         temp_point.x = xCoordinates[i];
         temp_point.y = yCoordinates[i];
         temp_point.z = zCoordinates[i];
-        msg_non_filtered->points.push_back(temp_point);
+        cloud_raw->points.push_back(temp_point);
     }
     /*
      * Downsampling a PointCloud using a VoxelGrid filter
      */
-    PointCloud::Ptr msg_filtered (new PointCloud);
+    PointCloud::Ptr cloud_filtered (new PointCloud);
     pcl::VoxelGrid<pcl::PointXYZ> sor;
-    sor.setInputCloud (msg_non_filtered);
-    sor.setLeafSize (0.05f, 0.05f, 0.05f);  //5cm
-    sor.filter (*msg_filtered);
+    sor.setInputCloud (cloud_raw);
+    sor.setLeafSize (VOXEL_GRID_LEAF_SIZE, VOXEL_GRID_LEAF_SIZE, VOXEL_GRID_LEAF_SIZE);
+    sor.filter (*cloud_filtered);
 
     /*
      * Removing outliers using a StatisticalOutlierRemoval filter
      */
-    PointCloud::Ptr msg_filtered_without_outlier (new PointCloud);
+    PointCloud::Ptr cloud_filtered_without_outliers (new PointCloud);
     pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor_stat;
-    sor_stat.setInputCloud (msg_filtered);
-    sor_stat.setMeanK (20);
-    sor_stat.setStddevMulThresh (1);
-    sor_stat.filter (*msg_filtered_without_outlier);
+    sor_stat.setInputCloud (cloud_filtered);
+    sor_stat.setMeanK (STAT_FILTER_MEAN_K);
+    sor_stat.setStddevMulThresh (STAT_FILTER_DEV_MUL_THRESH);
+    sor_stat.filter (*cloud_filtered_without_outliers);
 
     /*
      * Euclidean Cluster Extraction
      */
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster (new pcl::PointCloud<pcl::PointXYZ>);
     // Creating the KdTree object for the search method of the extraction
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_projected (new pcl::PointCloud<pcl::PointXYZ>);
-    tree->setInputCloud (msg_filtered_without_outlier);
+    tree->setInputCloud (cloud_filtered_without_outliers);
     pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
-    ec.setClusterTolerance (0.15); // 15cm
-    ec.setMinClusterSize (50); //50
-    ec.setMaxClusterSize (msg_filtered_without_outlier->size());
+    ec.setClusterTolerance (EUCL_CLUSTER_EXTRAC_TOLERANCE);
+    ec.setMinClusterSize (EUCL_CLUSTER_EXTRAC_MIN_CLUSTER_SIZE);
+    ec.setMaxClusterSize (cloud_filtered_without_outliers->size());
     ec.setSearchMethod (tree);
-    ec.setInputCloud (msg_filtered_without_outlier);
+    ec.setInputCloud (cloud_filtered_without_outliers);
     std::vector<pcl::PointIndices> cluster_indices;
     ec.extract (cluster_indices);
     int j=0;
     for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
     {
-       cloud_projected->points.clear();
+       cloud_cluster->points.clear();
        for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit){
-            cloud_projected->points.push_back (msg_filtered_without_outlier->points[*pit]); //*
+            cloud_cluster->points.push_back (cloud_filtered_without_outliers->points[*pit]);
         }
-        visualizer->addConvexMesh(cloud_projected,j);
+        visualizer->addConvexMesh(cloud_cluster,j);
         j++;
 
     }
@@ -214,7 +182,7 @@ bool publishData() {
 
     status = BTAfreeFrame(&frame);
     if (status != BTA_StatusOk) {
-        ROS_ERROR_STREAM("Could not free frame: " << status);
+        std::cout << "Could not free frame: " << status << std::endl;
         return 0;
     }
 
@@ -230,22 +198,16 @@ bool publishData() {
  *
  */
 int main(int argc, char *argv[]) {
-    ROS_INFO("Starting argos3d_p100 ros...");
-    ros::init (argc, argv, "argos3d_p100");
-    ros::NodeHandle nh;
-
-    if(initialize(argc, argv,nh)){
-        ROS_INFO("Initalized Camera... Reading Data");
-        ros::Rate loop_rate(200);
-        while (nh.ok() && dataPublished)
+    std::cout << "Starting argos3d_p100" << std::endl;
+    if(initialize()){
+        std::cout << "Initalized Camera... Reading Data"<< std::endl;
+        while (dataPublished)
         {
             if(!publishData())
                 dataPublished=false;
-            ros::spinOnce ();
-            loop_rate.sleep ();
         }
     } else {
-        ROS_WARN("Cannot Initialize Camera. Check the parameters and try again!!");
+        std::cout << "Cannot Initialize Camera. Check the parameters and try again!!" << std::endl;
         return 0;
     }
 
