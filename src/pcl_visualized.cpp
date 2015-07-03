@@ -12,28 +12,28 @@
 #include <pcl/PolygonMesh.h>
 #include <pcl/surface/concave_hull.h>
 
-boost::shared_ptr<pcl::visualization::PCLVisualizer> shapesVis (pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud)
+boost::shared_ptr<pcl::visualization::PCLVisualizer> shapesVis (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud)
 {
     // --------------------------------------------
     // -----Open 3D viewer and add point cloud-----
     // --------------------------------------------
     boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
     viewer->setBackgroundColor (0, 0, 0);
-    pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(cloud);
+    //pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(cloud);
     //viewer->addPointCloud<pcl::PointXYZRGB> (cloud, rgb, "sample cloud");
     //viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
     viewer->addCoordinateSystem (1.0);
     viewer->initCameraParameters ();
 
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_hull (new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::ConvexHull<pcl::PointXYZRGB> chull;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_hull (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::ConvexHull<pcl::PointXYZ> chull;
     std::vector< pcl::Vertices> polygons;
     chull.setInputCloud (cloud);
     chull.reconstruct (*cloud_hull,polygons);
 
-    boost::shared_ptr<pcl::PolygonMesh> model_polygon_mesh_;
-    if (!viewer->updatePolygonMesh<pcl::PointXYZRGB> (cloud_hull, polygons, "polygon"))
-        viewer->addPolygonMesh<pcl::PointXYZRGB> (cloud_hull, polygons, "polygon", 0);
+    //boost::shared_ptr<pcl::PolygonMesh> model_polygon_mesh_;
+    if (!viewer->updatePolygonMesh<pcl::PointXYZ> (cloud_hull, polygons, "polygon"))
+        viewer->addPolygonMesh<pcl::PointXYZ> (cloud_hull, polygons, "polygon", 0);
 
     /*
   //------------------------------------
@@ -62,53 +62,6 @@ boost::shared_ptr<pcl::visualization::PCLVisualizer> shapesVis (pcl::PointCloud<
   coeffs.values.push_back (5.0);
   viewer->addCone (coeffs, "cone");
   */
-    return (viewer);
-}
-
-
-unsigned int text_id = 0;
-void keyboardEventOccurred (const pcl::visualization::KeyboardEvent &event,
-                            void* viewer_void)
-{
-    boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer = *static_cast<boost::shared_ptr<pcl::visualization::PCLVisualizer> *> (viewer_void);
-    if (event.getKeySym () == "r" && event.keyDown ())
-    {
-        std::cout << "r was pressed => removing all text" << std::endl;
-
-        char str[512];
-        for (unsigned int i = 0; i < text_id; ++i)
-        {
-            sprintf (str, "text#%03d", i);
-            viewer->removeShape (str);
-        }
-        text_id = 0;
-    }
-}
-
-void mouseEventOccurred (const pcl::visualization::MouseEvent &event,
-                         void* viewer_void)
-{
-    boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer = *static_cast<boost::shared_ptr<pcl::visualization::PCLVisualizer> *> (viewer_void);
-    if (event.getButton () == pcl::visualization::MouseEvent::LeftButton &&
-            event.getType () == pcl::visualization::MouseEvent::MouseButtonRelease)
-    {
-        std::cout << "Left mouse button released at position (" << event.getX () << ", " << event.getY () << ")" << std::endl;
-
-        char str[512];
-        sprintf (str, "text#%03d", text_id ++);
-        viewer->addText ("clicked here", event.getX (), event.getY (), str);
-    }
-}
-
-boost::shared_ptr<pcl::visualization::PCLVisualizer> interactionCustomizationVis ()
-{
-    boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
-    viewer->setBackgroundColor (0, 0, 0);
-    viewer->addCoordinateSystem (1.0);
-
-    viewer->registerKeyboardCallback (keyboardEventOccurred, (void*)&viewer);
-    viewer->registerMouseCallback (mouseEventOccurred, (void*)&viewer);
-
     return (viewer);
 }
 
@@ -169,7 +122,7 @@ main (int argc, char** argv)
     pcl::NormalEstimation<pcl::PointXYZRGB, pcl::Normal> ne;
     ne.setInputCloud (point_cloud_ptr);
     boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
-    viewer = shapesVis(point_cloud_ptr);
+    viewer = shapesVis(basic_cloud_ptr);
     //--------------------
     // -----Main loop-----
     //--------------------

@@ -111,7 +111,7 @@ add_definitions(${PCL_DEFINITIONS})
 # )
 
 ## Declare a cpp executable
-add_executable(argos3d_p100_node src/argos3d_p100_node.cpp)
+add_executable(argos3d_p100_node src/argos3d_p100_node.cpp src/visualized.cpp)
 add_executable(pcl_visualized_demo src/pcl_visualized_demo.cpp)
 add_executable(pcl_visualized src/pcl_visualized.cpp)
 

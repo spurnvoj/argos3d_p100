@@ -23,6 +23,7 @@
 #include <pcl/surface/concave_hull.h>
 
 
+#include "visualizer.h"
 #include <stdio.h>
 #include <time.h>
 #include <sstream>
@@ -33,7 +34,7 @@ const uint8_t c_r[] = {0,  0,  0,  0,255,255,255,255};
 const uint8_t c_g[] = {0,  0,255,255,  0,  0,255,255};
 const uint8_t c_b[] = {0,255,  0,255,  0,255,  0,255};
 std::vector<pcl::PointIndices> cluster_indices;
-
+ArgosVisualizer* visualizer;
 
 /**
  * Camera Driver Parameters
@@ -118,6 +119,7 @@ int initialize(int argc, char *argv[],ros::NodeHandle nh){
     pub_cluster = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB> > ("depth_clusters", 1);
     pub_hull = nh.advertise<PointCloud> ("depth_hull", 1);
     dataPublished=true;
+    visualizer = new ArgosVisualizer();
     return 1;
 }
 
@@ -128,6 +130,9 @@ int initialize(int argc, char *argv[],ros::NodeHandle nh){
  *
  */
 bool publishData() {
+    visualizer->clearWindow();
+    int j=0;
+    std::ostringstream ss;
 
     /*
      * Get frame from camera
@@ -193,11 +198,12 @@ bool publishData() {
     PointCloud::Ptr msg_filtered_without_outlier (new PointCloud);
     pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor_stat;
     sor_stat.setInputCloud (msg_filtered);
-    sor_stat.setMeanK (15);
+    sor_stat.setMeanK (20);
     sor_stat.setStddevMulThresh (1);
     sor_stat.filter (*msg_filtered_without_outlier);
 
-    printf("%ld, %ld\n",msg_filtered->points.size(),msg_filtered_without_outlier->points.size());
+    //printf("%ld, %ld\n",msg_filtered->points.size(),msg_filtered_without_outlier->points.size());
+    //visualizer->addPointCloud(msg_filtered_without_outlier);
 
     /*
      * Publishing the messages
@@ -215,11 +221,10 @@ bool publishData() {
     ///
     // Create the segmentation object for the planar model and set all the parameters
     /*
-    pcl::SACSegmentation<pcl::PointXYZI> seg;
+    pcl::SACSegmentation<pcl::PointXYZ> seg;
     pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
     pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
-    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_plane (new pcl::PointCloud<pcl::PointXYZI> ());
-    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_f (new pcl::PointCloud<pcl::PointXYZI> ());
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_plane (new pcl::PointCloud<pcl::PointXYZ> ()), cloud_f (new pcl::PointCloud<pcl::PointXYZ> ());
     seg.setOptimizeCoefficients (true);
     seg.setModelType (pcl::SACMODEL_PLANE);
     seg.setMethodType (pcl::SAC_RANSAC);
@@ -227,8 +232,8 @@ bool publishData() {
     seg.setDistanceThreshold (0.02);
 
     int i=0, nr_points = (int) msg_filtered_without_outlier->points.size ();
-    printf("%ld \n",msg_filtered_without_outlier->points.size());
-    while (msg_filtered_without_outlier->points.size () > 0.3 * nr_points)
+    printf("cl %ld \n",msg_filtered_without_outlier->points.size());
+    while (msg_filtered_without_outlier->points.size () > 0.5 * nr_points)
     {
         // Segment the largest planar component from the remaining cloud
         seg.setInputCloud (msg_filtered_without_outlier);
@@ -240,21 +245,29 @@ bool publishData() {
         }
 
         // Extract the planar inliers from the input cloud
-        pcl::ExtractIndices<pcl::PointXYZI> extract;
+        pcl::ExtractIndices<pcl::PointXYZ> extract;
         extract.setInputCloud (msg_filtered_without_outlier);
         extract.setIndices (inliers);
         extract.setNegative (false);
 
         // Get the points associated with the planar surface
         extract.filter (*cloud_plane);
+        if (cloud_plane->points.size()<100) break;
         std::cout << "PointCloud representing the planar component: " << cloud_plane->points.size () << " data points." << std::endl;
+        ss.str("");
+        ss.clear();
+        ss << j;
+        visualizer->addConvexMesh(cloud_plane,ss.str());
+        j++;
 
         // Remove the planar inliers, extract the rest
         extract.setNegative (true);
         extract.filter (*cloud_f);
         *msg_filtered_without_outlier = *cloud_f;
-        printf("%ld \n",msg_filtered_without_outlier->points.size());
+        //printf("%ld \n",msg_filtered_without_outlier->points.size());
     }
+    //printf("msg %ld \n",msg_filtered_without_outlier->points.size());
+    //pcl::copyPointCloud<pcl::PointXYZ,pcl::PointXYZ>(cloud_without_outliers,msg_filtered_without_outlier);
     */
 
     // Create CLUSTERS
@@ -276,7 +289,7 @@ bool publishData() {
 
     pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
     ec.setClusterTolerance (0.15); // 10cm
-    ec.setMinClusterSize (50);
+    ec.setMinClusterSize (50); //50
     ec.setMaxClusterSize (msg_filtered_without_outlier->size());
     ec.setSearchMethod (tree);
     ec.setInputCloud (msg_filtered_without_outlier);
@@ -284,28 +297,35 @@ bool publishData() {
     cluster_indices.clear();
     ec.extract (cluster_indices);
 
-    int j = 0;
+    //int j = 0;
+    //std::ostringstream ss;
     for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
     {
-        for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit){
-            if (j==0)
-                cloud_projected->points.push_back (msg_filtered_without_outlier->points[*pit]); //*
-            cloud_cluster->points[*pit].r = c_r[j];
-            cloud_cluster->points[*pit].g = c_g[j];
-            cloud_cluster->points[*pit].b = c_b[j];
+        ss.str("");
+        ss.clear();
+        cloud_projected->points.clear();
+       for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit){
+            cloud_projected->points.push_back (msg_filtered_without_outlier->points[*pit]); //*
+            //cloud_cluster->points[*pit].r = c_r[j];
+            //cloud_cluster->points[*pit].g = c_g[j];
+            //cloud_cluster->points[*pit].b = c_b[j];
         }
+        ss << j;
+        visualizer->addConvexMesh(cloud_projected,ss.str());
         j++;
+        /*
         if (j>7) {
             printf("More than 7 clusters \n");
             break;
         }
+        */
     }
 
-    cloud_cluster->header.stamp = frame->timeStamp;
-    cloud_cluster->header.frame_id = "map";
-    pub_cluster.publish (cloud_cluster);
+    //cloud_cluster->header.stamp = frame->timeStamp;
+    //cloud_cluster->header.frame_id = "map";
+    //pub_cluster.publish (cloud_cluster);
 
-
+    /*
     // Create a Concave Hull representation of the projected inliers
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_hull (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::ConvexHull<pcl::PointXYZ> chull;
@@ -322,6 +342,8 @@ bool publishData() {
     cloud_hull->header.stamp = frame->timeStamp;
     cloud_hull->header.frame_id = "map";
     pub_hull.publish (cloud_hull);
+    */
+    visualizer->refresh();
 
     status = BTAfreeFrame(&frame);
     if (status != BTA_StatusOk) {
