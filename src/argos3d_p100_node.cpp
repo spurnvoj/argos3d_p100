@@ -21,6 +21,7 @@
 
 
 #include "visualizer.h"
+#include "time_measurement.h"
 #include <stdio.h>
 #include <time.h>
 
@@ -40,6 +41,8 @@
 
 typedef pcl::PointCloud<pcl::PointXYZ> PointCloud;
 ArgosVisualizer* visualizer;
+std::vector<pcl::PointXYZ> obst_min, obst_max;
+
 
 /**
  * Camera Driver Parameters
@@ -63,21 +66,21 @@ int initialize(){
     BTA_Config config;
     status = BTAinitConfig(&config);
     if (status != BTA_StatusOk) {
-        std::cout << "Could not connect: " << status << std::endl;
+        std::cout << "\t Could not connect: " << status << "\n";
         return 0;
     }
     config.frameMode = BTA_FrameModeXYZ;
 
     status = BTAopen(&config, &btaHandle);
     if (status != BTA_StatusOk) {
-        std::cout << "Could not open: " << status << std::endl;
+        std::cout << "\t Could not open: " << status << "\n";
         return 0;
     }
 
     BTA_DeviceInfo *deviceInfo;
     status = BTAgetDeviceInfo(btaHandle, &deviceInfo);
     if (status != BTA_StatusOk) {
-        std::cout << "Could not read device info: " << status << std::endl;
+        std::cout << "\t Could not read device info: " << status << "\n";
         return 0;
     }
     //printf("Device type: 0x%x\n", deviceInfo->deviceType);
@@ -95,13 +98,12 @@ int initialize(){
  *
  */
 bool publishData() {
-    visualizer->clearWindow();
     /*
      * Get frame from camera
      */
     status = BTAgetFrame(btaHandle, &frame,3000);  //3000;
     if (status != BTA_StatusOk) {
-        std::cout << "Could transfer data: " << status << std::endl;
+        std::cout << "\t Could transfer data: " << status << "\n";
         return 0;
     }
 
@@ -112,9 +114,10 @@ bool publishData() {
     BTA_DataFormat dataFormat;
     BTA_Unit unit;
     uint16_t xRes, yRes;
-    status = BTAgetXYZcoordinates(frame, (void **)&xCoordinates, (void **)&yCoordinates, (void **)&zCoordinates, &dataFormat, &unit, &xRes, &yRes);
+    status = BTAgetXYZcoordinates(frame, (void **)&xCoordinates, (void **)&yCoordinates,
+                                  (void **)&zCoordinates, &dataFormat, &unit, &xRes, &yRes);
     if (status != BTA_StatusOk) {
-        std::cout << "Could get cartesian coordinates: " << status << std::endl;
+        std::cout << "\t Could get cartesian coordinates: " << status << "\n";
         return 0;
     }
 
@@ -155,7 +158,6 @@ bool publishData() {
     /*
      * Euclidean Cluster Extraction
      */
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster (new pcl::PointCloud<pcl::PointXYZ>);
     // Creating the KdTree object for the search method of the extraction
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
     tree->setInputCloud (cloud_filtered_without_outliers);
@@ -167,22 +169,57 @@ bool publishData() {
     ec.setInputCloud (cloud_filtered_without_outliers);
     std::vector<pcl::PointIndices> cluster_indices;
     ec.extract (cluster_indices);
-    int j=0;
+
+    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr > vec_cluters;
     for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
     {
-       cloud_cluster->points.clear();
-       for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit){
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster (new pcl::PointCloud<pcl::PointXYZ>);
+        for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit){
             cloud_cluster->points.push_back (cloud_filtered_without_outliers->points[*pit]);
         }
-        visualizer->addConvexMesh(cloud_cluster,j);
-        j++;
+        vec_cluters.push_back(cloud_cluster);
+    }
 
+    /*
+     * ConvexHull for every cluster
+     */
+    /*
+    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr > vec_convex_hulls;
+    for (int i = 0; i < vec_cluters.size(); ++i) {
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::ConvexHull<pcl::PointXYZ> hull;
+        hull.setInputCloud (vec_cluters[i]);
+        hull.reconstruct (*cloud);
+        vec_convex_hulls.push_back(cloud);
+    }
+    */
+
+    /*
+     * Bounding box for every cluster
+     */
+    obst_min.clear();
+    obst_max.clear();
+    for (int i = 0; i < vec_cluters.size(); ++i) {
+        obst_min.push_back(pcl::PointXYZ());
+        obst_max.push_back(pcl::PointXYZ());
+        pcl::getMinMax3D(*vec_cluters[i], obst_min[i], obst_max[i]);
+    }
+
+    /*
+     * Visualization of convex hulls
+     */
+    visualizer->clearWindow();
+    for (int i = 0; i < vec_cluters.size(); ++i) {
+        //visualizer->addPointCloud(vec_cluters[i],i);
+        //visualizer->addConvexMesh(vec_cluters[i],i);
+        visualizer->addBox(obst_min[i],obst_max[i],i);
     }
     visualizer->refresh();
 
+
     status = BTAfreeFrame(&frame);
     if (status != BTA_StatusOk) {
-        std::cout << "Could not free frame: " << status << std::endl;
+        std::cout << "\t Could not free frame: " << status << "\n";
         return 0;
     }
 
@@ -198,19 +235,25 @@ bool publishData() {
  *
  */
 int main(int argc, char *argv[]) {
-    std::cout << "Starting argos3d_p100" << std::endl;
+    std::cout << "---------------------------------------------------\n";
+    std::cout << "|           Starting ARGOS3D - P100               |\n";
+    std::cout << "---------------------------------------------------\n";
+    std::cout << "- Initalizion of camera"<< "\n";
+    //TimeMeasurement time;
     if(initialize()){
-        std::cout << "Initalized Camera... Reading Data"<< std::endl;
+        std::cout << "- Camera initialized => Reading data"<< "\n";
         while (dataPublished)
         {
-            if(!publishData())
-                dataPublished=false;
+            //time.start();
+            if(!publishData()) break;
+            //time.end();
         }
     } else {
-        std::cout << "Cannot Initialize Camera. Check the parameters and try again!!" << std::endl;
+        std::cout << "- Cannot Initialize Camera :\n \t Check the parameters and try again!! \n";
+        std::cout << "---------------------------------------------------\n";
         return 0;
     }
-
+    std::cout << "---------------------------------------------------\n";
     BTAfreeFrame(&frame);
     BTAclose(&btaHandle);
     return 0;

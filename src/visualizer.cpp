@@ -3,8 +3,7 @@
 
 std::vector<std::string> names;
 
-void ArgosVisualizer::addConvexMesh(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud, const size_t &id)
-{
+void ArgosVisualizer::addConvexMesh(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud, const size_t &id){
     std::ostringstream ss;
     ss << id;
     const std::string name = ss.str();
@@ -19,8 +18,7 @@ void ArgosVisualizer::addConvexMesh(const pcl::PointCloud<pcl::PointXYZ>::ConstP
         viewer->addPolygonMesh<pcl::PointXYZ> (cloud_hull, polygons,name);
 }
 
-void ArgosVisualizer::addConcaveMesh(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud, const size_t &id)
-{
+void ArgosVisualizer::addConcaveMesh(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud, const size_t &id){
     std::ostringstream ss;
     ss << id;
     const std::string name = ss.str();
@@ -36,11 +34,22 @@ void ArgosVisualizer::addConcaveMesh(const pcl::PointCloud<pcl::PointXYZ>::Const
         viewer->addPolygonMesh<pcl::PointXYZ> (cloud_hull, polygons,name);
 }
 
-void ArgosVisualizer::addPointCloud(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud){
-    if (!viewer->updatePointCloud<pcl::PointXYZ> (cloud))
-        viewer->addPointCloud<pcl::PointXYZ> (cloud);
+void ArgosVisualizer::addPointCloud(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud, const size_t &id){
+    std::ostringstream ss;
+    ss << id;
+    const std::string name = ss.str();
+
+    if (!viewer->updatePointCloud<pcl::PointXYZ> (cloud,name))
+        viewer->addPointCloud<pcl::PointXYZ> (cloud,name);
     //viewer->addPointCloud<pcl::PointXYZ> (cloud);
-    viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2);
+    viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, name);
+}
+
+void ArgosVisualizer::addBox(const pcl::PointXYZ min, const pcl::PointXYZ max, const size_t &id){
+    std::ostringstream ss;
+    ss << id;
+    const std::string name = ss.str();
+    viewer->addCube(min.x,max.x,min.y,max.y,min.z,max.z,1,1,1,name);
 }
 
 ArgosVisualizer::ArgosVisualizer(){
@@ -65,5 +74,6 @@ void ArgosVisualizer::clearWindow(){
     }
     names.clear();
     viewer->removeAllPointClouds();
+    viewer->removeAllShapes();
     //refresh();
 }
